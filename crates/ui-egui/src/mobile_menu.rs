@@ -473,7 +473,7 @@ pub fn layer_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, 
             // ─── Keyframe Animation & Easing ───────────────────────────────
             kit::heading(app, ui, w, "Keyframe Animation & Easing", u);
             {
-                if kit::list_row(app, ui, w, 46.0 * u, Some(Icon::Diamonds), "Easing & Keyframe Jump", Some(if keys_open { "▾" } else { "›" }), None, true, "mobile.layer.keys.toggle", u) {
+                if kit::list_row(app, ui, w, 46.0 * u, Some(Icon::Keyframe), "Easing & Keyframe Jump", Some(if keys_open { "▾" } else { "›" }), None, true, "mobile.layer.keys.toggle", u) {
                     ctx.data_mut(|d| d.insert_temp(keys_sub_id, !keys_open));
                 }
                 if keys_open {
@@ -536,7 +536,7 @@ pub fn layer_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, 
             // ─── Timing & Playhead ─────────────────────────────────────────
             kit::heading(app, ui, w, "Timing & Playhead", u);
             {
-                if kit::list_row(app, ui, w, 46.0 * u, Some(Icon::Time), "In/Out & Work Area", Some(if timing_open { "▾" } else { "›" }), None, true, "mobile.layer.timing.toggle", u) {
+                if kit::list_row(app, ui, w, 46.0 * u, Some(Icon::Stopwatch), "In/Out & Work Area", Some(if timing_open { "▾" } else { "›" }), None, true, "mobile.layer.timing.toggle", u) {
                     ctx.data_mut(|d| d.insert_temp(timing_sub_id, !timing_open));
                 }
                 if timing_open {
@@ -634,7 +634,7 @@ pub fn layer_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, 
             if kit::list_row(app, ui, w, 46.0 * u, Some(Icon::Fx), "Add Expression (Alt+Shift+=)", None, None, true, "mobile.layer.op.addExpr", u) {
                 cmd = Some(("prop.setExpression", json!({})));
             }
-            if kit::list_row(app, ui, w, 46.0 * u, Some(Icon::Diamonds), "Convert Expression to Keyframes", None, None, true, "mobile.layer.op.exprToKeys", u) {
+            if kit::list_row(app, ui, w, 46.0 * u, Some(Icon::Keyframe), "Convert Expression to Keyframes", None, None, true, "mobile.layer.op.exprToKeys", u) {
                 cmd = Some(("prop.convertExpressionToKeyframes", json!({})));
             }
             // Add Effect shortcut
@@ -715,7 +715,7 @@ pub fn layer_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, 
                 // Timing, keyframe, style, and creation commands
                 let res = if id.starts_with("timeline.") || id.starts_with("app.") || id.starts_with("file.") {
                     menus::invoke(app, ctx, id, params)
-                } else if let Err(e) = app.session.execute(id, params) {
+                } else if let Err(_e) = app.session.execute(id, params) {
                     menus::invoke(app, ctx, id, json!({}))
                 } else {
                     Ok(json!({}))
