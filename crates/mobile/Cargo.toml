@@ -1,0 +1,38 @@
+[package]
+name = "effectcraft-mobile"
+description = "Android mobile platform bridge for EffectCraft: NDK, JNI, ANativeWindow, and low-RAM headless session hosting"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[lints.clippy]
+dbg_macro = "warn"
+todo = "warn"
+
+[dependencies]
+effectcraft-engine = { workspace = true }
+effectcraft-project = { workspace = true }
+effectcraft-render = { workspace = true }
+effectcraft-gpu = { workspace = true }
+effectcraft-raster = { workspace = true }
+effectcraft-media = { workspace = true }
+effectcraft-export = { workspace = true }
+effectcraft-keyframe = { workspace = true }
+effectcraft-time = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }
+jni = { version = "0.21", default-features = false }
+
+[target.'cfg(target_os = "android")'.dependencies]
+ndk = { version = "0.9", default-features = false, features = ["nativewindow", "media", "bitmap"] }
+ndk-sys = "0.6"
+raw-window-handle = "0.6"
+
+[dev-dependencies]
+effectcraft-color = { workspace = true }

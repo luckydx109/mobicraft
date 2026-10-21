@@ -1,0 +1,30 @@
+# Rust
+target/
+**/*.rs.bk
+Cargo.lock
+
+# Android build artifacts
+*.apk
+*.aab
+*.dex
+*.class
+*.so
+.gradle/
+local.properties
+captures/
+apps/effectcraft-android/app/build/
+apps/effectcraft-android/.gradle/
+
+# IDE / Editor
+.idea/
+*.iml
+.vscode/
+*.swp
+*~
+.DS_Store
+.claude/worktrees/
+
+# Output directories
+/dist
+/log
+plan/
