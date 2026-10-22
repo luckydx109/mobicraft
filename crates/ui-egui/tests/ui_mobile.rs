@@ -9,6 +9,7 @@ use effectcraft_ui_egui::EffectcraftApp;
 use effectcraft_ui_egui::mobile;
 use egui::{Event, Pos2, pos2};
 use egui_kittest::Harness;
+use egui_kittest::kittest::Queryable;
 use serde_json::json;
 
 fn session() -> Session {
@@ -165,6 +166,20 @@ fn layer_sheet_creates_layers_and_toggles_switches() {
         assert!(find(&h, need).is_some(), "{need}");
     }
     let before = h.state().session.active_comp().unwrap().layers.len();
+    // The sheet opens on the quick toggles, blending, matte, parent ...; Create is further down: slide
+    // the sheet up (a finger drag) until it shows.
+    enable_touch(&mut h);
+    let screen = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 860.0));
+    let close = find(&h, "mobile.layer.close").unwrap();
+    for _ in 0..8 {
+        let text = find(&h, "mobile.layer.new.Text").unwrap();
+        if text.min.y >= close.max.y && text.max.y <= screen.max.y - 40.0 {
+            break;
+        }
+        drag(&mut h, pos2(200.0, 700.0), pos2(200.0, 330.0));
+    }
+    let text = find(&h, "mobile.layer.new.Text").unwrap();
+    assert!(text.min.y >= close.max.y && text.max.y <= screen.max.y, "Create > Text slid into view: {text:?}");
     tap(&mut h, "mobile.layer.new.Text");
     assert_eq!(h.state().session.active_comp().unwrap().layers.len(), before + 1, "Create > Text adds a layer");
     assert!(!exists(&h, "mobile.layer."), "the sheet closes after an action");
@@ -224,6 +239,15 @@ fn harness_insets(size: egui::Vec2, insets: [f32; 4]) -> Harness<'static, Effect
     h
 }
 
+/// A phone has a touch screen: egui scrolls lists by dragging their contents only once it has seen
+/// a touch (`DragScroll::OnTouch`), which the tests' mouse events never tell it.
+fn enable_touch(h: &mut Harness<'_, EffectcraftApp>) {
+    for phase in [egui::TouchPhase::Start, egui::TouchPhase::End] {
+        h.event(Event::Touch { device_id: egui::TouchDeviceId(0), id: egui::TouchId(0), phase, pos: pos2(2.0, 2.0), force: None });
+        h.step();
+    }
+}
+
 fn drag(h: &mut Harness<'_, EffectcraftApp>, from: Pos2, to: Pos2) {
     h.event(Event::PointerMoved(from));
     h.step();
@@ -270,18 +294,79 @@ fn the_whole_timeline_slides_sideways() {
     assert!(screen.contains_rect(bar) && bar.height() >= 36.0, "{bar:?}");
     let tl = find(&h, "panel.Timeline").unwrap();
     assert!(screen.contains_rect(tl) && tl.max.y <= bar.min.y + 1.0, "the timeline ends above the bar: {tl:?} {bar:?}");
-    // The layer names start at the left edge...
-    let before = find(&h, "timeline.timecode").expect("timecode").min.x;
-    // ...and slide out of view when the bar is dragged to its end.
-    drag(&mut h, pos2(bar.min.x + 30.0, bar.center().y), pos2(bar.max.x + 60.0, bar.center().y));
-    let after = find(&h, "timeline.timecode").expect("timecode").min.x;
-    assert!(after < before - 100.0, "the timeline did not slide: {before} -> {after}");
-    // Everything that stays put is still inside the screen: the bar and the toolbar row.
+    // It opens on the layer names next to the time graph; the other columns wait on the left.
+    let name = find(&h, "timeline.header.name").expect("name column");
+    assert!(screen.contains_rect(egui::Rect::from_min_size(name.min, egui::vec2(100.0, 20.0))), "names are on screen: {name:?}");
+    let parent = find(&h, "timeline.header.parent").expect("Parent & Link column");
+    assert!(parent.max.x <= name.min.x + 1.0 && parent.min.x < 0.0, "Parent & Link waits on the left: {parent:?} {name:?}");
+    // Dragging the bar to its start slides the columns in: Switches and Parent & Link are on screen.
+    drag(&mut h, pos2(bar.max.x - 40.0, bar.center().y), pos2(bar.min.x - 80.0, bar.center().y));
+    for col in ["av", "label", "num", "switches", "parent"] {
+        let r = find(&h, &format!("timeline.header.{col}")).unwrap_or_else(|| {
+            let ids: Vec<String> = h.state().auto.previous.iter().chain(h.state().auto.elements.iter()).filter(|e| e.id.starts_with("timeline.header")).map(|e| format!("{} {:?}", e.id, e.rect)).collect();
+            panic!("column {col}; registered: {ids:?}")
+        });
+        assert!(r.min.x >= -1.0 && r.max.x <= 400.0 + 1.0, "{col} must be fully on screen when slid in: {r:?}");
+    }
+    // Everything that stays put is still inside the screen: the bar and the +.
     check_inside(&h, screen, &["mobile.timeline.pan", "mobile.plus", "mobile.play"]);
-    // And back.
-    drag(&mut h, pos2(bar.max.x - 30.0, bar.center().y), pos2(bar.min.x - 60.0, bar.center().y));
-    let back = find(&h, "timeline.timecode").expect("timecode").min.x;
-    assert!((back - before).abs() < 2.0, "{before} -> {back}");
+    // And back to names + graph.
+    drag(&mut h, pos2(bar.min.x + 40.0, bar.center().y), pos2(bar.max.x + 80.0, bar.center().y));
+    let back = find(&h, "timeline.header.name").unwrap().min.x;
+    assert!((back - name.min.x).abs() < 2.0, "{} -> {back}", name.min.x);
+}
+
+#[test]
+fn the_columns_button_opens_a_sheet_with_every_column() {
+    let mut h = harness(egui::vec2(400.0, 860.0));
+    let screen = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 860.0));
+    check_inside(&h, screen, &["timeline.switch.columns", "timeline.switch.modes", "timeline.switch.search", "timeline.switch.graph"]);
+    tap(&mut h, "timeline.switch.columns");
+    h.run_steps(6);
+    for col in ["av", "label", "num", "switches", "modes", "parent", "keys", "in", "out", "duration", "stretch", "comment"] {
+        assert!(find(&h, &format!("mobile.col.toggle.{col}")).is_some(), "the column sheet must offer {col}");
+    }
+    assert!(h.state().ui.timeline.columns.contains("parent"), "Parent & Link is on by default");
+    tap(&mut h, "mobile.col.toggle.parent");
+    assert!(!h.state().ui.timeline.columns.contains("parent"), "the sheet switches the column off");
+    tap(&mut h, "mobile.col.toggle.parent");
+    assert!(h.state().ui.timeline.columns.contains("parent"), "and on again");
+}
+
+#[test]
+fn the_timeline_strip_navigates_keyframes_and_toggles_modes() {
+    let mut h = harness(egui::vec2(400.0, 860.0));
+    assert!(!h.state().ui.timeline.show_modes);
+    tap(&mut h, "timeline.switch.modes");
+    assert!(h.state().ui.timeline.show_modes, "the Modes chip shows the Modes columns");
+    tap(&mut h, "timeline.switch.modes");
+    // Twirl (past the right edge of a 400 pt phone: slide the strip) opens the selected layers'
+    // properties, a second tap closes them.
+    enable_touch(&mut h);
+    let y = find(&h, "timeline.switch.columns").unwrap().center().y;
+    drag(&mut h, pos2(360.0, y), pos2(60.0, y));
+    let twirl = find(&h, "timeline.switch.twirl").unwrap();
+    assert!(egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 860.0)).expand(1.0).contains_rect(twirl), "the strip slid to the Twirl chip: {twirl:?}");
+    let id = h.state().session.active_comp().unwrap().layers[0].id.0;
+    h.state_mut().session.state.selected_layers = vec![effectcraft_engine::project::LayerId(id)];
+    h.run_steps(3);
+    tap(&mut h, "timeline.switch.twirl");
+    assert!(h.state().ui.timeline.open_layers.contains(&id), "twirl opens the selected layer");
+    tap(&mut h, "timeline.switch.twirl");
+    assert!(!h.state().ui.timeline.open_layers.contains(&id), "and closes it");
+}
+
+#[test]
+fn layer_sheet_picks_a_parent() {
+    let mut h = harness(egui::vec2(400.0, 860.0));
+    let ids: Vec<u64> = h.state().session.active_comp().unwrap().layers.iter().map(|l| l.id.0).collect();
+    let (child, parent) = (ids[0], ids[1]);
+    mobile::open_layer_menu(&h.ctx, child);
+    h.run_steps(8);
+    tap(&mut h, "mobile.layer.parent.toggle");
+    tap(&mut h, &format!("mobile.layer.parent.{parent}"));
+    let got = h.state().session.active_comp().unwrap().layers.iter().find(|l| l.id.0 == child).and_then(|l| l.parent).map(|p| p.0);
+    assert_eq!(got, Some(parent), "the sheet's parent picker sets the layer's parent");
 }
 
 #[test]
@@ -300,4 +385,51 @@ fn the_plus_can_be_moved_and_still_opens_the_panels() {
     // A tap still opens the panel.
     tap(&mut h, "mobile.plus");
     assert!(find(&h, "mobile.plus.Assets").is_some(), "tap opens the + panel");
+}
+
+#[test]
+fn the_plus_panel_offers_the_pc_panels_that_were_only_in_the_window_menu() {
+    let mut h = harness(egui::vec2(400.0, 860.0));
+    let screen = egui::Rect::from_min_size(Pos2::ZERO, egui::vec2(400.0, 860.0));
+    enable_touch(&mut h);
+    tap(&mut h, "mobile.plus");
+    let y = find(&h, "mobile.plus.Info").expect("the strip").center().y;
+    let before = find(&h, "mobile.plus.Info").unwrap();
+    drag(&mut h, pos2(360.0, y), pos2(60.0, y));
+    let after = find(&h, "mobile.plus.Info").unwrap();
+    assert!(after.min.x < before.min.x - 100.0, "the strip must scroll by dragging: {before:?} -> {after:?}");
+    for label in ["Paint & Brushes", "Brushes", "Layer", "Wiggler", "Smoother", "Motion Sketch", "Mask Interpolation", "Essential Graphics", "Footage", "Flowchart", "Create Nulls"] {
+        let id = format!("mobile.plus.{label}");
+        // Slide the strip until the tab shows (left or right, whichever way it lies).
+        for _ in 0..14 {
+            let Some(r) = find(&h, &id) else { break };
+            if screen.expand(1.0).contains_rect(r) {
+                break;
+            }
+            if r.min.x < 0.0 {
+                drag(&mut h, pos2(60.0, y), pos2(360.0, y));
+            } else {
+                drag(&mut h, pos2(360.0, y), pos2(60.0, y));
+            }
+        }
+        let tab = find(&h, &id).unwrap_or_else(|| panic!("a {label} tab"));
+        assert!(screen.expand(1.0).contains_rect(tab), "{label} tab {tab:?}");
+        tap_at(&mut h, tab.center());
+        let body = h.state().auto.previous.iter().chain(h.state().auto.elements.iter()).filter(|e| e.id.starts_with("panel.")).map(|e| egui::Rect::from_min_size(pos2(e.rect[0], e.rect[1]), egui::vec2(e.rect[2], e.rect[3]))).max_by(|a, b| a.height().total_cmp(&b.height())).expect("a panel");
+        assert!(screen.contains_rect(body) && body.height() > 150.0, "{label} panel {body:?}");
+    }
+}
+
+#[test]
+fn layer_sheet_quick_toggles_are_not_cut_off() {
+    let mut h = harness(egui::vec2(400.0, 860.0));
+    let id = h.state().session.active_comp().unwrap().layers[0].id.0;
+    mobile::open_layer_menu(&h.ctx, id);
+    h.run_steps(8);
+    let close = find(&h, "mobile.layer.close").unwrap();
+    // The sheet's visible width ends where its close button ends (same 12 pt margin on the left).
+    for key in ["eye", "solo", "lock"] {
+        let r = find(&h, &format!("mobile.layer.quick.{key}")).unwrap();
+        assert!(r.min.x >= 11.0 && r.max.x <= close.max.x - 4.0, "{key} pill {r:?} must end inside the sheet (close button ends at {})", close.max.x);
+    }
 }

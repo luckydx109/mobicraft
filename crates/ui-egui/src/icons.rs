@@ -111,6 +111,8 @@ pub enum Icon {
     Redo,
     /// Duplicate (touch tool rail).
     Duplicate,
+    /// Timeline columns (touch).
+    Columns,
     Link,
     MountainSmall,
     MountainLarge,
@@ -537,6 +539,11 @@ pub fn paint(painter: &Painter, rect: Rect, icon: Icon, color: Color32) {
             pen.circle(11.5, 12.5, 2.0);
             pen.line(&[(5.6, 10.8), (11.5, 2.5)]);
             pen.line(&[(10.4, 10.8), (4.5, 2.5)]);
+        }
+        Columns => {
+            pen.rect(2.0, 3.0, 14.0, 13.0);
+            pen.line(&[(6.5, 3.0), (6.5, 13.0)]);
+            pen.line(&[(10.0, 3.0), (10.0, 13.0)]);
         }
         Duplicate => {
             pen.rect(5.5, 5.5, 13.5, 13.5);

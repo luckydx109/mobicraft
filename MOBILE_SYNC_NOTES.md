@@ -1,4 +1,4 @@
-# EffectCraft Mobile: synced to the PC version (v0.13.0)
+# EffectCraft Mobile: synced to the PC version (v0.14.0)
 
 The engine and every PC crate are the PC version's code, copied as it is. The phone parts were put
 back on top of it. Search the code for `MOBILE-HOOK` and `crate::mobile::active()` to see where the
@@ -42,3 +42,23 @@ quickly. A full `--release` build is still possible.
   was not carried over: export on the phone uses the PC's software H.264 encoder.
 * `crates/mobile` (JNI bridge) was never linked into the app and does not compile against the
   engine; it is excluded from the workspace.
+
+## Building the APK
+Run `build_desktop_android.ps1` (PowerShell) in this folder. It needs: Rust 1.95 or newer
+(`rustup update stable`), git and internet for the first build (some crates come from GitHub), the
+Android NDK 28 / SDK build-tools 35 / platform 36 at the paths at the top of the script, and a JDK
+(Android Studio's `jbr`). The APK is written next to the script as `EffectCraft-Mobile.apk`.
+
+## Update log
+* PC 0.14.0 brought in (version, CI and packaging files only; the rest of 0.13 -> 0.14 was identical).
+* From the MobiEffects ("mobicraft") copy of this project: the layer sheet is much fuller (quick Visible / Solo /
+  Lock, Blending Mode, Track Matte, **Parent & Link picker**, Layer Styles, keyframe and timing actions, label
+  colors, Create), the **Columns sheet**, and more + panel sections. Fixes made while merging: the sheet's third
+  quick pill was cut off; creating a layer closes the sheet again; its "Twirl" button called a command that does
+  not exist (now it really opens / closes the selected layers); Reset restores the PC columns.
+* The old phone build hid the PC timeline columns (Switches, Parent & Link, ...) on first run and said they stayed in
+  a right-click menu that touch cannot open. They are back, and the timeline slides sideways to reach them.
+* New: one scrolling strip of timeline controls (Columns, Modes, Search, Graph, Prev Key, Key, Next Key, Twirl, Motion
+  Blur, Frame Blend, Shy, Draft 3D, Flowchart); Paint and Puppet tool groups; Layer, Paint, Brushes, Wiggler,
+  Smoother, Motion Sketch, Mask Interpolation, Essential Graphics, Footage, Flowchart, Create Nulls in the + panel.
+* **Updating from now on: see `mobile-sync/MOBILE_SYNC_GUIDE.md`** (send a new PC zip + this project's zip).

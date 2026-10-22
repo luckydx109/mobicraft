@@ -5,6 +5,8 @@ Cargo.lock
 
 # Android build artifacts
 *.apk
+*.idsig
+*.keystore
 *.aab
 *.dex
 *.class

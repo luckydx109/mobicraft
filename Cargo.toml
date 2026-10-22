@@ -7,7 +7,7 @@ default-members = ["crates/*", "apps/effectcraft", "apps/effectcraft-web", "apps
 exclude = ["apps/effectcraft-android", "crates/mobile"]
 
 [workspace.package]
-version = "0.13.0"
+version = "0.14.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 rust-version = "1.95"

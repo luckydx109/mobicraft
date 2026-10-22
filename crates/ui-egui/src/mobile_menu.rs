@@ -304,7 +304,9 @@ pub fn layer_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, 
             let gap = 8.0 * u;
             {
                 let cols = 3usize;
-                let cw = (w - gap * (cols as f32 - 1.0)) / cols as f32;
+                // The scroll area clips a few points short of the sheet's width: keep the third pill inside.
+                let wq = w - 12.0 * u;
+                let cw = (wq - gap * (cols as f32 - 1.0)) / cols as f32;
                 let (row, _) = ui.allocate_exact_size(vec2(w, 46.0 * u + gap), Sense::hover());
                 let toggles: [(&str, &str, Icon, bool); 3] = [
                     ("eye", "Visible", Icon::Eye, vis),
@@ -722,6 +724,11 @@ pub fn layer_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, 
                 };
                 if let Err(e) = res {
                     app.ui.status = e;
+                }
+                // Creating a layer is a finished action (the new layer is selected): the sheet closes;
+                // toggles, parent, blending and the like keep it open for the next change.
+                if id.starts_with("layer.new") {
+                    close = true;
                 }
             }
         }

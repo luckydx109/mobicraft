@@ -1,2 +1,8 @@
 [alias]
 xtask = "run --quiet --package xtask --"
+
+# The Android NDK's linker (the same NDK as build_desktop_android.ps1, which also sets these two
+# through environment variables, so the NDK location only has to be changed there).
+[target.aarch64-linux-android]
+linker = "E:/android-tools/android-sdk/ndk/28.0.13004108/toolchains/llvm/prebuilt/windows-x86_64/bin/aarch64-linux-android26-clang.cmd"
+ar = "E:/android-tools/android-sdk/ndk/28.0.13004108/toolchains/llvm/prebuilt/windows-x86_64/bin/llvm-ar.exe"

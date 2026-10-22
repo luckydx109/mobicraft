@@ -101,7 +101,7 @@ impl Section {
     }
 }
 
-const SECTIONS: [(Section, &str); 16] = [
+const SECTIONS: [(Section, &str); 24] = [
     (Section::Assets, "Assets"),
     (Section::Effects, "Effects & Presets"),
     (Section::Settings, "Effect Settings"),
@@ -118,6 +118,16 @@ const SECTIONS: [(Section, &str); 16] = [
     (Section::Other(PanelKind::Markers), "Markers"),
     (Section::Other(PanelKind::Info), "Info"),
     (Section::Other(PanelKind::Flowchart), "Flowchart"),
+    // More PC panels that used to be only in the Window menu (Paint, Brushes and Essential
+    // Graphics are above; the Layer panel is where the Paint tools paint).
+    (Section::Other(PanelKind::Layer), "Layer"),
+    (Section::Other(PanelKind::Brushes), "Brushes"),
+    (Section::Other(PanelKind::Wiggler), "Wiggler"),
+    (Section::Other(PanelKind::Smoother), "Smoother"),
+    (Section::Other(PanelKind::MotionSketch), "Motion Sketch"),
+    (Section::Other(PanelKind::MaskInterpolation), "Mask Interpolation"),
+    (Section::Other(PanelKind::Footage), "Footage"),
+    (Section::Other(PanelKind::CreateNullsFromPaths), "Create Nulls"),
 ];
 
 /// Pages that cover the editor.
@@ -155,18 +165,7 @@ struct MState {
 
 impl Default for MState {
     fn default() -> Self {
-        MState {
-            tools_row: true,
-            menu_row: false,
-            menu: None,
-            tool_pop: None,
-            plus: None,
-            split: 0.42,
-            page: Page::Editor,
-            tl_pan: 0.0,
-            plus_pos: None,
-            column_sheet: false,
-        }
+        MState { tools_row: true, menu_row: false, menu: None, tool_pop: None, plus: None, split: 0.42, page: Page::Editor, tl_pan: f32::MAX, plus_pos: None, column_sheet: false }
     }
 }
 
@@ -227,7 +226,7 @@ struct Group {
     needs_3d: bool,
 }
 
-const GROUPS: [Group; 8] = [
+const GROUPS: [Group; 10] = [
     Group { name: "Selection", tools: &[(Tool::Selection, "Selection")], needs_3d: false },
     Group { name: "Hand", tools: &[(Tool::Hand, "Hand"), (Tool::Zoom, "Zoom")], needs_3d: false },
     Group { name: "Rotation", tools: &[(Tool::Rotate, "Rotation")], needs_3d: false },
@@ -243,6 +242,12 @@ const GROUPS: [Group; 8] = [
         needs_3d: false,
     },
     Group { name: "Text", tools: &[(Tool::Type, "Horizontal Type"), (Tool::TypeVertical, "Vertical Type")], needs_3d: false },
+    Group { name: "Paint", tools: &[(Tool::Brush, "Brush"), (Tool::Clone, "Clone Stamp"), (Tool::Eraser, "Eraser")], needs_3d: false },
+    Group {
+        name: "Puppet",
+        tools: &[(Tool::Puppet, "Puppet Pin"), (Tool::PuppetStarch, "Puppet Starch"), (Tool::PuppetBend, "Puppet Bend"), (Tool::PuppetAdvanced, "Puppet Advanced Pin"), (Tool::PuppetOverlap, "Puppet Overlap")],
+        needs_3d: false,
+    },
     Group { name: "Camera", tools: &[(Tool::Orbit, "Orbit Camera"), (Tool::PanCamera, "Pan Camera"), (Tool::Dolly, "Dolly Camera")], needs_3d: true },
 ];
 
@@ -309,11 +314,14 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut Ui, full: Rect) {
     poll_picked(app, &ctx);
     let u = dp(&ctx);
     touch_style(app, &ctx, u);
-    // Once: the timeline keeps only the eye/lock column and the label, so layer names and the time
-    // graph both fit a phone. (The other columns stay in the column menu.)
+    // The timeline shows the same columns as the PC version (A/V, label, #, switches, Parent &
+    // Link; the Columns button adds Modes, In, Out ...). An earlier phone build trimmed them to
+    // the eye/lock column and the label, and a project saved by it still has only those two: give
+    // that one back its columns, once per launch.
     if !ctx.data(|d| d.get_temp::<bool>(Id::new("mobile-columns"))).unwrap_or(false) {
-        for id in ["keys", "num", "comment", "switches", "modes", "parent", "in", "out", "duration", "stretch"] {
-            let _ = panels::timeline::set_column(&mut app.ui.timeline, id, false);
+        let only_trimmed = app.ui.timeline.columns.len() == 2 && ["av", "label"].iter().all(|c| app.ui.timeline.columns.contains(*c));
+        if only_trimmed {
+            app.ui.timeline.columns = crate::state::default_tl_columns();
         }
         ctx.data_mut(|d| d.insert_temp(Id::new("mobile-columns"), true));
     }
@@ -381,6 +389,9 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut Ui, full: Rect) {
         if crate::mobile_menu::layer_sheet(app, &ctx, full, layer, u) {
             ctx.data_mut(|d| d.remove::<u64>(Id::new("m-layer-menu")));
         }
+    }
+    if ctx.data_mut(|d| d.remove_temp::<bool>(Id::new("mobile-open-columns"))).unwrap_or(false) {
+        st.column_sheet = true;
     }
     if st.column_sheet {
         if column_sheet(app, &ctx, full, u) {
@@ -712,52 +723,6 @@ fn embed_clipped(app: &mut EffectcraftApp, ui: &mut Ui, kind: PanelKind, rect: R
 // Timeline and the + panel
 // ---------------------------------------------------------------------------------------------
 
-fn timeline_header(app: &mut EffectcraftApp, ui: &mut Ui, ctx: &egui::Context, rect: Rect, st: &mut MState, u: f32) {
-    let t = app.tokens;
-    ui.painter().rect_filled(rect, 0.0, t.header_bg);
-    ui.painter().line_segment([rect.left_bottom(), rect.right_bottom()], egui::Stroke::new(1.0, t.app_bg));
-
-    let show_modes = app.ui.timeline.show_modes;
-    let graph_on = app.ui.timeline.graph_editor;
-
-    let items = vec![
-        Item::text("mobile.tl.modes", if show_modes { "Modes (F4)" } else { "Switches (F4)" }, 96.0 * u).on(show_modes),
-        Item::text("mobile.tl.cols", "Columns ▾", 82.0 * u).on(st.column_sheet),
-        Item::text("mobile.tl.graph", "📈 Graph", 76.0 * u).on(graph_on),
-        Item::text("mobile.tl.prev_key", "◀ Key (J)", 76.0 * u),
-        Item::text("mobile.tl.key", "◆ Key", 58.0 * u),
-        Item::text("mobile.tl.next_key", "Key (K) ▶", 76.0 * u),
-        Item::text("mobile.tl.twirl", "▾ Twirl", 64.0 * u),
-    ];
-    let out = kit::strip(app, ui, rect, "tl_header", &items, u);
-    if let Some(i) = out.clicked {
-        match items[i].id.as_str() {
-            "mobile.tl.modes" => {
-                app.ui.timeline.show_modes = !app.ui.timeline.show_modes;
-            }
-            "mobile.tl.cols" => {
-                st.column_sheet = !st.column_sheet;
-            }
-            "mobile.tl.graph" => {
-                app.ui.timeline.graph_editor = !app.ui.timeline.graph_editor;
-            }
-            "mobile.tl.prev_key" => {
-                let _ = menus::invoke(app, ctx, "time.previousKey", json!({}));
-            }
-            "mobile.tl.key" => {
-                let _ = menus::invoke(app, ctx, "prop.toggleKey", json!({}));
-            }
-            "mobile.tl.next_key" => {
-                let _ = menus::invoke(app, ctx, "time.nextKey", json!({}));
-            }
-            "mobile.tl.twirl" => {
-                let _ = menus::invoke(app, ctx, "timeline.twirlSelected", json!({}));
-            }
-            _ => {}
-        }
-    }
-}
-
 fn column_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, u: f32) -> bool {
     let t = app.tokens;
     let mut close = false;
@@ -777,7 +742,9 @@ fn column_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, u: 
         egui::ScrollArea::vertical().id_salt("m-cols-scroll").auto_shrink([false, false]).show(&mut child, |ui| {
             kit::heading(app, ui, w, "Show / Hide Columns", u);
 
-            const ALL_COLS: [(&str, &str, &str); 10] = [
+            const ALL_COLS: [(&str, &str, &str); 12] = [
+                ("av", "A/V Features", "Eye, audio, solo and lock"),
+                ("label", "Label", "The layer's label color"),
                 ("parent", "Parent & Link", "Link layers to each other"),
                 ("switches", "Layer Switches", "Shy, Lock, 3D, Motion Blur..."),
                 ("modes", "Blend Modes & Matte", "38 Blending modes and Track Matte"),
@@ -799,10 +766,8 @@ fn column_sheet(app: &mut EffectcraftApp, ctx: &egui::Context, bounds: Rect, u: 
 
             ui.add_space(12.0 * u);
             let btn_r = Rect::from_min_size(pos2(inner.min.x + 8.0 * u, ui.cursor().min.y), vec2(w - 16.0 * u, 42.0 * u));
-            if kit::button(app, ui, btn_r, "Reset to Mobile Defaults (Compact)", Btn::Secondary, true, "mobile.cols.reset", u) {
-                for id in ["keys", "num", "comment", "switches", "modes", "parent", "in", "out", "duration", "stretch"] {
-                    let _ = panels::timeline::set_column(&mut app.ui.timeline, id, false);
-                }
+            if kit::button(app, ui, btn_r, "Reset to Default Columns", Btn::Secondary, true, "mobile.cols.reset", u) {
+                app.ui.timeline.columns = crate::state::default_tl_columns();
                 app.ui.timeline.show_modes = false;
                 close = true;
             }
@@ -822,18 +787,14 @@ fn timeline_area(app: &mut EffectcraftApp, ui: &mut Ui, rect: Rect, st: &mut MSt
     app.ui.focused = PanelKind::Timeline;
     let ctx = ui.ctx().clone();
 
-    // The top strip provides quick mobile controls: Switches/Modes toggle, Columns picker, Graph, Key navigation
-    let header_h = 36.0 * u;
-    let header = Rect::from_min_size(rect.min, vec2(rect.width(), header_h));
-    timeline_header(app, ui, &ctx, header, st, u);
 
     // The whole timeline (layer names, properties and the time graph) is wider than the screen and
     // slides sideways: by the bar under it, or two fingers over the names (or over a graph that
     // shows the whole comp; zoomed in, two fingers pan the time instead).
     let bar_h = 36.0 * u; // a finger-sized strip; only its slim track is drawn
-    let view = Rect::from_min_max(pos2(rect.min.x, header.max.y), pos2(rect.max.x, rect.max.y - bar_h));
+    let view = Rect::from_min_max(rect.min, pos2(rect.max.x, rect.max.y - bar_h));
     let bar = Rect::from_min_max(pos2(rect.min.x, view.max.y), rect.max);
-    let extra = (view.width() * 0.9).round();
+    let extra = panels::timeline::mobile_columns_w(&app.ui.timeline).round();
     let finger: f32 = ctx.data_mut(|d| d.remove_temp::<f32>(Id::new("mobile-tl-pan-dx"))).unwrap_or(0.0);
     st.tl_pan = (st.tl_pan + finger).clamp(0.0, extra);
     let wide = Rect::from_min_size(pos2(view.min.x - st.tl_pan, view.min.y), vec2(view.width() + extra, view.height()));

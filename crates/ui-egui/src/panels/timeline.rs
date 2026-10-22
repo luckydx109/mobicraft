@@ -411,7 +411,14 @@ struct Cols {
     end: f32,
 }
 
-fn cols(x0: f32, width: f32, vis: Vis) -> Cols {
+/// Width of the visible columns but the name: how far the phone's timeline slides to bring them in.
+pub fn mobile_columns_w(tl: &crate::state::TimelineState) -> f32 {
+    Vis::of(tl).fixed()
+}
+
+/// `name_last` (phones): the name column comes after all the others, next to the time graph; the
+/// phone slides the whole timeline sideways, so every column is reachable by touch.
+fn cols(x0: f32, width: f32, vis: Vis, name_last: bool) -> Cols {
     let name_w = (width - vis.fixed()).max(120.0);
     let mut x = x0;
     let mut next = |on: bool, w: f32| {
@@ -425,7 +432,7 @@ fn cols(x0: f32, width: f32, vis: Vis) -> Cols {
     let keys = next(vis.keys, KEYS_W);
     let label = next(vis.label, LABEL_W);
     let num = next(vis.num, NUM_W);
-    let name = next(true, name_w);
+    let mut name = if name_last { 0.0 } else { next(true, name_w) };
     let comment = next(vis.comment, COMMENT_W);
     let switches = next(vis.switches, SW * 8.0 + 6.0);
     let mode = next(vis.modes, 92.0);
@@ -435,6 +442,9 @@ fn cols(x0: f32, width: f32, vis: Vis) -> Cols {
     let out = next(vis.out, TIME_W);
     let duration = next(vis.duration, TIME_W);
     let stretch = next(vis.stretch, STRETCH_W);
+    if name_last {
+        name = next(true, name_w);
+    }
     let end = next(true, 0.0);
     Cols { vis, av, keys, label, num, name, name_end: name + name_w, comment, switches, mode, trkmat, parent, in_, out, duration, stretch, end }
 }
@@ -1438,14 +1448,15 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let footer_h = 24.0;
     let vis = Vis::of(&app.ui.timeline);
     let (name_min, left_min, left_frac) = if mobile { (120.0, 160.0, 0.58) } else { (190.0, 420.0, 0.72) };
-    let left_w = (vis.fixed() + name_min).clamp(left_min, (view.width() * left_frac).max(left_min));
     // Columns wider than the pane scroll horizontally (Shift+wheel / trackpad over the outline,
-    // or the scroll bar above the footer); the name column keeps its minimum width.
+    // or the scroll bar above the footer); the name column keeps its minimum width. On a phone
+    // the pane is as wide as all the columns: the whole timeline slides instead.
     let natural_w = vis.fixed() + name_min;
+    let left_w = if mobile { natural_w } else { natural_w.clamp(left_min, (view.width() * left_frac).max(left_min)) };
     let overflow = (natural_w - left_w).max(0.0);
     app.ui.timeline.outline_scroll = app.ui.timeline.outline_scroll.clamp(0.0, overflow);
     let oscroll = app.ui.timeline.outline_scroll;
-    let cw = cols(rect.min.x - oscroll, left_w + overflow, vis);
+    let cw = cols(rect.min.x - oscroll, left_w + overflow, vis, mobile);
     let graph_x0 = rect.min.x + left_w + 1.0;
     let graph_x1 = rect.max.x - GUTTER_W;
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("timeline-graph-area"), (graph_x0, graph_x1 - graph_x0)));
@@ -1483,7 +1494,9 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     }
     // ---- header (left): time display, search, switches.
     let tc = crate::panels::timecode(&app.session, &comp, time);
-    let tc_rect = Rect::from_min_size(pos2(rect.min.x + 12.0, top + 6.0), vec2(150.0, 24.0));
+    // (Phone: the timeline is slid sideways, so the time display stays at the visible left edge.)
+    let hx = if mobile { view.min.x } else { rect.min.x };
+    let tc_rect = Rect::from_min_size(pos2(hx + 12.0, top + 6.0), vec2(if mobile { (name_min - 12.0).max(100.0) } else { 150.0 }, 24.0));
     let tc_resp = ui.interact(tc_rect, egui::Id::new("tl-timecode"), Sense::click_and_drag());
     p.text(tc_rect.left_center(), Align2::LEFT_CENTER, &tc, Tokens::semibold(16.0), t.timecode);
     // Under it the other style (frames under timecode, timecode under frames) and the rate.
@@ -1533,32 +1546,138 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         app.auto.add("timeline.search", sr, "Search");
     }
     let (mut bx, by, bsize, bstep) = if mobile { (mtb.max.x - 6.0, mtb.min.y + 4.0, 36.0, 42.0) } else { (rect.min.x + left_w - 10.0, top + 11.0, 24.0, 28.0) };
+    let search_id = egui::Id::new("mobile-tl-search");
+    let search_on = mobile && ctx.data(|d| d.get_temp::<bool>(search_id)).unwrap_or(false);
+    if search_on {
+        // The layer search takes over the toolbar row: a field and a close button.
+        let close = Rect::from_min_size(pos2(mtb.max.x - 42.0, mtb.min.y + 4.0), vec2(36.0, 36.0));
+        let field = Rect::from_min_max(pos2(mtb.min.x + 8.0, mtb.min.y + 6.0), pos2(close.min.x - 6.0, mtb.max.y - 6.0));
+        let mut search = app.ui.timeline.search.clone();
+        widgets::search_field(ui, field, &mut search, "Search layers", &t);
+        app.ui.timeline.search = search;
+        app.auto.add("timeline.search", field, "Search");
+        let cr = widgets::icon_button(ui, close, Icon::Close, false, &t, egui::Id::new("tl-search-close"));
+        app.auto.add("timeline.search.close", close, "Close search");
+        if cr.clicked() {
+            app.ui.timeline.search.clear();
+            ctx.data_mut(|d| d.insert_temp(search_id, false));
+        }
+    }
     if mobile {
         p.rect_filled(mtb, 0.0, t.header_bg);
         p.line_segment([mtb.left_bottom(), mtb.right_bottom()], Stroke::new(1.0, t.app_bg));
-        p.text(pos2(mtb.min.x + 12.0, mtb.center().y), Align2::LEFT_CENTER, "Timeline", Tokens::semibold(13.0), t.text_dim);
     }
-    for (icon, on, id, tip) in [
-        (Icon::Graph, app.ui.timeline.graph_editor, "graph", "Graph Editor"),
-        (Icon::MotionBlur, comp.enable_motion_blur, "motionBlur", "Enables Motion Blur for all layers with the Motion Blur switch set"),
-        (Icon::FrameBlend, comp.enable_frame_blending, "frameBlending", "Enables Frame Blending for all layers with the Frame Blend switch set"),
-        (Icon::Shy, comp.hide_shy, "hideShy", "Hides all layers for which the Shy switch is set"),
-        (Icon::Draft3D, comp.draft_3d, "draft3d", "Draft 3D"),
-        (Icon::Flowchart, false, "flowchart", "Composition Mini-Flowchart"),
-    ] {
-        let r = Rect::from_min_size(pos2(bx - bsize, by), vec2(bsize, bsize));
-        let resp = widgets::icon_button(ui, r, icon, on, &t, egui::Id::new(("tl-sw", id))).on_hover_text(tip);
-        app.auto.add(&format!("timeline.switch.{id}"), r, tip);
-        if resp.clicked() {
-            match id {
-                "graph" => app.ui.timeline.graph_editor = !app.ui.timeline.graph_editor,
-                "flowchart" => app.show_panel(crate::dock::PanelKind::Flowchart),
-                _ => {
-                    let _ = app.session.execute("comp.setSwitch", json!({"switch": id}));
+    if !mobile {
+        for (icon, on, id, tip) in [
+            (Icon::Graph, app.ui.timeline.graph_editor, "graph", "Graph Editor"),
+            (Icon::MotionBlur, comp.enable_motion_blur, "motionBlur", "Enables Motion Blur for all layers with the Motion Blur switch set"),
+            (Icon::FrameBlend, comp.enable_frame_blending, "frameBlending", "Enables Frame Blending for all layers with the Frame Blend switch set"),
+            (Icon::Shy, comp.hide_shy, "hideShy", "Hides all layers for which the Shy switch is set"),
+            (Icon::Draft3D, comp.draft_3d, "draft3d", "Draft 3D"),
+            (Icon::Flowchart, false, "flowchart", "Composition Mini-Flowchart"),
+        ] {
+            let r = Rect::from_min_size(pos2(bx - bsize, by), vec2(bsize, bsize));
+            let resp = widgets::icon_button(ui, r, icon, on, &t, egui::Id::new(("tl-sw", id))).on_hover_text(tip);
+            app.auto.add(&format!("timeline.switch.{id}"), r, tip);
+            if resp.clicked() {
+                match id {
+                    "graph" => app.ui.timeline.graph_editor = !app.ui.timeline.graph_editor,
+                    "flowchart" => app.show_panel(crate::dock::PanelKind::Flowchart),
+                    _ => {
+                        let _ = app.session.execute("comp.setSwitch", json!({"switch": id}));
+                    }
                 }
             }
+            bx -= bstep;
         }
-        bx -= bstep;
+    }
+
+    // Phone: every control of the timeline's header in one strip that scrolls sideways (touch has
+    // no right-click header menu, no F4, no J / K): the column sheet, the Switches / Modes toggle,
+    // layer search, graph editor, keyframe navigation, twirl and the comp switches.
+    if mobile && !search_on {
+        let mut strip = ui.new_child(egui::UiBuilder::new().max_rect(mtb).id_salt("tl-mstrip"));
+        strip.set_clip_rect(mtb.intersect(ui.clip_rect()));
+        enum Chip {
+            Icon(Icon),
+            Text(&'static str, f32),
+        }
+        let chips: [(Chip, bool, &str, &str); 13] = [
+            (Chip::Icon(Icon::Columns), false, "columns", "Columns: Parent & Link, Switches, Modes, In, Out, Duration, Stretch ..."),
+            (Chip::Text("Modes", 62.0), app.ui.timeline.show_modes, "modes", "Switches / Modes columns (F4)"),
+            (Chip::Icon(Icon::Search), !app.ui.timeline.search.is_empty(), "search", "Search layers"),
+            (Chip::Icon(Icon::Graph), app.ui.timeline.graph_editor, "graph", "Graph Editor"),
+            (Chip::Text("Prev Key", 76.0), false, "prevKey", "Go to Previous Keyframe (J)"),
+            (Chip::Text("Key", 50.0), false, "toggleKey", "Add or Remove Keyframe at Current Time"),
+            (Chip::Text("Next Key", 76.0), false, "nextKey", "Go to Next Keyframe (K)"),
+            (Chip::Text("Twirl", 58.0), false, "twirl", "Expand / collapse the selected layers' properties"),
+            (Chip::Icon(Icon::MotionBlur), comp.enable_motion_blur, "motionBlur", "Enables Motion Blur for all layers with the Motion Blur switch set"),
+            (Chip::Icon(Icon::FrameBlend), comp.enable_frame_blending, "frameBlending", "Enables Frame Blending for all layers with the Frame Blend switch set"),
+            (Chip::Icon(Icon::Shy), comp.hide_shy, "hideShy", "Hides all layers for which the Shy switch is set"),
+            (Chip::Icon(Icon::Draft3D), comp.draft_3d, "draft3d", "Draft 3D"),
+            (Chip::Icon(Icon::Flowchart), false, "flowchart", "Composition Mini-Flowchart"),
+        ];
+        egui::ScrollArea::horizontal()
+            .id_salt("tl-mstrip-scroll")
+            .auto_shrink([false, false])
+            .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+            .show(&mut strip, |ui| {
+                let total: f32 = chips.iter().map(|c| 6.0 + if let Chip::Text(_, w) = c.0 { w } else { 40.0 }).sum::<f32>() + 8.0;
+                let (area, _) = ui.allocate_exact_size(vec2(total.max(mtb.width()), mtb.height()), egui::Sense::hover());
+                let mut x = area.min.x + 6.0;
+                for (chip, on, id, tip) in chips {
+                    let w = if let Chip::Text(_, w) = chip { w } else { 40.0 };
+                    let r = Rect::from_min_size(pos2(x, area.min.y + 4.0), vec2(w, 36.0));
+                    x += w + 6.0;
+                    let wid = egui::Id::new(("tl-sw", id));
+                    let resp = match chip {
+                        Chip::Icon(icon) => widgets::icon_button(ui, r, icon, on, &t, wid),
+                        Chip::Text(label, _) => widgets::text_button(ui, r, label, on, &t, wid),
+                    };
+                    app.auto.add(&format!("timeline.switch.{id}"), r, tip);
+                    if resp.clicked() {
+                        match id {
+                            "columns" => ctx.data_mut(|d| {
+                                d.insert_temp(egui::Id::new("mobile-open-columns"), true);
+                            }),
+                            "modes" => app.ui.timeline.show_modes = !app.ui.timeline.show_modes,
+                            "search" => ctx.data_mut(|d| {
+                                d.insert_temp(search_id, true);
+                            }),
+                            "graph" => app.ui.timeline.graph_editor = !app.ui.timeline.graph_editor,
+                            "prevKey" => {
+                                let _ = crate::menus::invoke(app, &ctx, "time.previousKey", json!({}));
+                            }
+                            "nextKey" => {
+                                let _ = crate::menus::invoke(app, &ctx, "time.nextKey", json!({}));
+                            }
+                            "toggleKey" => {
+                                let _ = crate::menus::invoke(app, &ctx, "prop.toggleKey", json!({}));
+                            }
+                            "twirl" => {
+                                // The selected layers (all of them when none is selected): open every
+                                // one that is closed, or close them all when they are all open.
+                                let mut ids: Vec<u64> = app.session.state.selected_layers.iter().map(|l| l.0).collect();
+                                if ids.is_empty() {
+                                    ids = app.session.active_comp().map(|c| c.layers.iter().map(|l| l.id.0).collect()).unwrap_or_default();
+                                }
+                                let any_closed = ids.iter().any(|id| !app.ui.timeline.open_layers.contains(id));
+                                for id in ids {
+                                    if any_closed {
+                                        app.ui.timeline.open_layers.insert(id);
+                                    } else {
+                                        app.ui.timeline.open_layers.remove(&id);
+                                    }
+                                }
+                            }
+                            "flowchart" => app.show_panel(crate::dock::PanelKind::Flowchart),
+                            _ => {
+                                let _ = app.session.execute("comp.setSwitch", json!({"switch": id}));
+                            }
+                        }
+                    }
+                }
+            });
     }
 
     // ---- ruler (right).
@@ -4477,7 +4596,7 @@ mod tests {
         assert!(set_column(tl, "name", false).is_err());
         assert!(set_column(tl, "bogus", true).is_err());
         let vis = Vis::of(tl);
-        let cw = cols(0.0, 1400.0, vis);
+        let cw = cols(0.0, 1400.0, vis, false);
         // Hidden columns take no room; visible ones are in After Effects' order.
         assert_eq!(cw.keys, cw.label);
         assert_eq!(cw.label, cw.num);

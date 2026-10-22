@@ -9,13 +9,41 @@ Write-Host "==========================================================" -Foregro
 
 # 1. Environment paths configuration
 $CargoBin = "$env:USERPROFILE\.cargo\bin"
-$AndroidHome = "D:\android_studio_files"
-$AndroidNdk = "D:\android_studio_files\ndk\28.2.13676358"
-$JavaHome = "D:\android studio\jbr"
-$BuildTools = "$AndroidHome\build-tools\35.0.0"
-$PlatformJar = "$AndroidHome\platforms\android-36\android.jar"
+
+# Android Home (E: drive Android SDK installed by EffectCraft setup)
+$AndroidHome = if (Test-Path "E:\android-tools\android-sdk") { "E:\android-tools\android-sdk" }
+               elseif ($env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) { $env:ANDROID_HOME }
+               else { "D:\android_studio_files" }
+
+# Java Home (E: drive JDK 17 installed by EffectCraft setup)
+$JavaHome = if (Test-Path "E:\android-tools\jdk-17") { "E:\android-tools\jdk-17" }
+            elseif ($env:JAVA_HOME -and (Test-Path $env:JAVA_HOME)) { $env:JAVA_HOME }
+            else { "D:\android studio\jbr" }
+
+# Android NDK
+$AndroidNdk = if (Test-Path "$AndroidHome\ndk\28.0.13004108") { "$AndroidHome\ndk\28.0.13004108" }
+              elseif (Test-Path "$AndroidHome\ndk\28.2.13676358") { "$AndroidHome\ndk\28.2.13676358" }
+              elseif (Test-Path "$AndroidHome\ndk") { (Get-ChildItem "$AndroidHome\ndk" -Directory | Select-Object -First 1).FullName }
+              else { "D:\android_studio_files\ndk\28.2.13676358" }
+
+# Build-tools
+$BuildTools = if (Test-Path "$AndroidHome\build-tools\35.0.0") { "$AndroidHome\build-tools\35.0.0" }
+              elseif (Test-Path "$AndroidHome\build-tools") { (Get-ChildItem "$AndroidHome\build-tools" -Directory | Sort-Object Name -Descending | Select-Object -First 1).FullName }
+              else { "$AndroidHome\build-tools\35.0.0" }
+
+# Platform Jar (check 36, 35, 34)
+$PlatformJar = if (Test-Path "$AndroidHome\platforms\android-36\android.jar") { "$AndroidHome\platforms\android-36\android.jar" }
+               elseif (Test-Path "$AndroidHome\platforms\android-35\android.jar") { "$AndroidHome\platforms\android-35\android.jar" }
+               elseif (Test-Path "$AndroidHome\platforms\android-34\android.jar") { "$AndroidHome\platforms\android-34\android.jar" }
+               else { "$AndroidHome\platforms\android-35\android.jar" }
+
 $PlatformTools = "$AndroidHome\platform-tools"
 $NdkBin = "$AndroidNdk\toolchains\llvm\prebuilt\windows-x86_64\bin"
+
+Write-Host "Using Android SDK: $AndroidHome" -ForegroundColor Gray
+Write-Host "Using Java Home:   $JavaHome" -ForegroundColor Gray
+Write-Host "Using NDK:         $AndroidNdk" -ForegroundColor Gray
+Write-Host "Using Platform:    $PlatformJar" -ForegroundColor Gray
 
 if (Test-Path $CargoBin) {
     $env:PATH = "$CargoBin;$env:PATH"
@@ -36,6 +64,10 @@ if (Test-Path $PlatformTools) {
 
 $env:ANDROID_HOME = $AndroidHome
 $env:ANDROID_NDK_HOME = $AndroidNdk
+
+# cargo links with the NDK's clang for the phone (these override .cargo/config.toml)
+$env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = "$NdkBin\aarch64-linux-android26-clang.cmd"
+$env:CARGO_TARGET_AARCH64_LINUX_ANDROID_AR = "$NdkBin\llvm-ar.exe"
 
 # 2. Check Rust & Target
 Write-Host "[1/5] Checking Rust compiler and Android target..." -ForegroundColor Yellow
