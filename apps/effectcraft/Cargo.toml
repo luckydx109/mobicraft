@@ -39,7 +39,7 @@ serde_json = { workspace = true }
 cpal = { workspace = true }
 log = { workspace = true }
 # Android runtime permissions (Photos / Videos / Music for the import screen); inert elsewhere.
-jni = { version = "0.21", default-features = false }
+jni = { version = "0.22", default-features = false }
 ndk-context = "0.1"
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
@@ -58,7 +58,7 @@ eframe = { workspace = true, features = ["android-native-activity"] }
 [target.'cfg(target_os = "linux")'.dependencies]
 # Settings ▸ Appearance ▸ Sync with System: the XDG desktop portal's colour scheme. Already in
 # Cargo.lock (accesskit, through eframe), so it adds no new crates.
-zbus = "5.19"
+zbus = "6.0"
 
 [build-dependencies]
 # Icon + VERSIONINFO for effectcraft.exe; build.rs only uses it when targeting Windows.
