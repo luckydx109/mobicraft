@@ -177,3 +177,98 @@ pub fn take_picked() -> Option<Vec<String>> {
     let _ = std::fs::remove_file(&file);
     Some(text.lines().map(str::trim).filter(|l| !l.is_empty() && std::path::Path::new(l).is_file()).map(str::to_string).collect())
 }
+
+// ------------------------------------------------------------------------------------------------
+// File dialogs for the PC panels (Save, Export, Collect Files, Open Project, Import ...)
+// ------------------------------------------------------------------------------------------------
+
+use effectcraft_ui_egui::{DialogDone, FileDialog};
+
+static PENDING: std::sync::Mutex<Option<DialogDone>> = std::sync::Mutex::new(None);
+
+/// Where a phone saves what a PC would ask a file name for: the app's own storage (no permission
+/// needed), `<files>/Saved/<name>`. A default that already points into the app's storage (an open
+/// project saving to itself) keeps its path.
+pub fn save_target(data_dir: &std::path::Path, default: &str) -> std::path::PathBuf {
+    let given = std::path::Path::new(default);
+    if given.is_absolute() && given.starts_with(data_dir) && given.file_name().is_some() {
+        return given.to_path_buf();
+    }
+    let name = given.file_name().map(|n| n.to_string_lossy().to_string()).filter(|n| !n.is_empty()).unwrap_or_else(|| "Untitled".to_string());
+    data_dir.join("Saved").join(name)
+}
+
+fn data_dir() -> Option<std::path::PathBuf> {
+    DATA_DIR.lock().ok()?.clone()
+}
+
+/// A blocking "where to save" answer: the phone does not ask, it chooses (see [`save_target`]).
+pub fn pick_save_file(default: &str, _ext: &str) -> Option<String> {
+    let dir = data_dir()?;
+    let target = save_target(&dir, default);
+    std::fs::create_dir_all(target.parent()?).ok()?;
+    Some(target.to_string_lossy().to_string())
+}
+
+fn saved_folder() -> Option<String> {
+    let dir = data_dir()?.join("Saved");
+    std::fs::create_dir_all(&dir).ok()?;
+    Some(dir.to_string_lossy().to_string())
+}
+
+/// The non-blocking dialogs: Save and Folder answer at once; Open goes to the system file manager
+/// and is answered by [`poll_dialog`] once the user has picked.
+pub fn file_dialog(dialog: FileDialog, done: DialogDone) {
+    match dialog {
+        FileDialog::Save { default, ext, .. } => done(pick_save_file(&default, &ext).into_iter().collect()),
+        FileDialog::Folder => done(saved_folder().into_iter().collect()),
+        FileDialog::Open { many, .. } => open_any(many, done),
+        FileDialog::OpenProject => open_any(false, done),
+    }
+}
+
+fn open_any(many: bool, done: DialogDone) {
+    if let Some(f) = result_file() {
+        let _ = std::fs::remove_file(f);
+    }
+    let previous = PENDING.lock().ok().and_then(|mut p| p.replace(done));
+    if let Some(old) = previous {
+        old(Vec::new());
+    }
+    if let Err(e) = open_picker(if many { "anymany" } else { "any" }) {
+        log::warn!("file dialog: {e}");
+        if let Some(done) = PENDING.lock().ok().and_then(|mut p| p.take()) {
+            done(Vec::new());
+        }
+    }
+}
+
+/// Once per frame: hand the user's pick to the dialog that is waiting for it.
+pub fn poll_dialog() {
+    if !PENDING.lock().map(|p| p.is_some()).unwrap_or(false) {
+        return;
+    }
+    if let Some(paths) = take_picked()
+        && let Some(done) = PENDING.lock().ok().and_then(|mut p| p.take())
+    {
+        done(paths);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::save_target;
+    use std::path::Path;
+
+    #[test]
+    fn saves_go_to_the_apps_storage() {
+        let data = Path::new("/data/user/0/app/files");
+        assert_eq!(save_target(data, "My Project.ecproj"), data.join("Saved").join("My Project.ecproj"));
+        // A desktop-style path keeps only its file name.
+        assert_eq!(save_target(data, "/home/me/Videos/out.mp4"), data.join("Saved").join("out.mp4"));
+        // An open project saving to itself keeps its place.
+        let mine = data.join("Projects").join("a.ecproj");
+        assert_eq!(save_target(data, &mine.to_string_lossy()), mine);
+        assert_eq!(save_target(data, ""), data.join("Saved").join("Untitled"));
+    }
+}

@@ -32,6 +32,7 @@ public class MainActivity extends NativeActivity {
     private static final String TAG = "EffectCraft";
     private static final int REQ_MEDIA = 4712;
     private static final int REQ_AUDIO = 4713;
+    private static final int REQ_ANY = 4714;
 
     /** Called from native code on any thread. {@code kind}: "media" (gallery) or "audio" (files). */
     public void pickMedia(final String kind) {
@@ -47,7 +48,14 @@ public class MainActivity extends NativeActivity {
         try {
             Intent intent;
             int request;
-            if ("audio".equals(kind)) {
+            if (kind != null && kind.startsWith("any")) {
+                // Any file (a project, a LUT, a font ...): the system file manager.
+                intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, "anymany".equals(kind));
+                request = REQ_ANY;
+            } else if ("audio".equals(kind)) {
                 intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
                 intent.addCategory(Intent.CATEGORY_OPENABLE);
                 intent.setType("audio/*");
@@ -76,7 +84,7 @@ public class MainActivity extends NativeActivity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (request != REQ_MEDIA && request != REQ_AUDIO) {
+        if (request != REQ_MEDIA && request != REQ_AUDIO && request != REQ_ANY) {
             return;
         }
         final List<Uri> uris = new ArrayList<Uri>();

@@ -1447,7 +1447,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let colhdr_h = 22.0;
     let footer_h = 24.0;
     let vis = Vis::of(&app.ui.timeline);
-    let (name_min, left_min, left_frac) = if mobile { (120.0, 160.0, 0.58) } else { (190.0, 420.0, 0.72) };
+    let (name_min, left_min, left_frac) = if mobile { (236.0, 160.0, 0.58) } else { (190.0, 420.0, 0.72) };
     // Columns wider than the pane scroll horizontally (Shift+wheel / trackpad over the outline,
     // or the scroll bar above the footer); the name column keeps its minimum width. On a phone
     // the pane is as wide as all the columns: the whole timeline slides instead.
@@ -1457,6 +1457,10 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     app.ui.timeline.outline_scroll = app.ui.timeline.outline_scroll.clamp(0.0, overflow);
     let oscroll = app.ui.timeline.outline_scroll;
     let cw = cols(rect.min.x - oscroll, left_w + overflow, vis, mobile);
+    // The x the sub-rows (properties, groups, effects, expressions) put their controls at: the
+    // Switches column on a PC; on a phone that column is slid off to the left (the name comes
+    // last), so they sit in the right part of the name column.
+    let aux_x = if mobile { cw.name_end - 128.0 } else { cw.switches };
     let graph_x0 = rect.min.x + left_w + 1.0;
     let graph_x1 = rect.max.x - GUTTER_W;
     ctx.data_mut(|d| d.insert_temp(egui::Id::new("timeline-graph-area"), (graph_x0, graph_x1 - graph_x0)));
@@ -2597,7 +2601,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                     app.auto.add(&format!("timeline.group.{uid}.twirl"), tw, name);
                 }
                 if let Some(en) = fx {
-                    let fr_ = Rect::from_center_size(pos2(cw.switches + SW * 3.0 + SW / 2.0, cy), vec2(16.0, 16.0));
+                    let fr_ = Rect::from_center_size(pos2(aux_x + SW * 3.0 + SW / 2.0, cy), vec2(16.0, 16.0));
                     if widgets::icon_toggle(ui, fr_, Icon::Fx, *en, &t, egui::Id::new(("gfx", uid)), Sense::click()).clicked() {
                         actions.push(("effect.toggle".into(), json!({"layer": layer.id.0, "effect": uid})));
                     }
@@ -2614,7 +2618,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 }
                 let group_edit: Option<(u64, u64, String)> = ctx.data(|d| d.get_temp(group_rename_id()));
                 if let Some((_, _, mut buf)) = group_edit.filter(|(rl, ru, _)| *rl == layer.id.0 && ru == uid) {
-                    let field = Rect::from_min_max(pos2(indent + 8.0, r.min.y + 2.0), pos2((cw.switches - 4.0).max(indent + 60.0), r.max.y - 2.0));
+                    let field = Rect::from_min_max(pos2(indent + 8.0, r.min.y + 2.0), pos2((aux_x - 4.0).max(indent + 60.0), r.max.y - 2.0));
                     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(field));
                     let er = child.add(egui::TextEdit::singleline(&mut buf).font(Tokens::ui(12.0)).desired_width(field.width()));
                     app.auto.add(&format!("timeline.group.{uid}.nameEdit"), er.rect, &buf);
@@ -2633,10 +2637,10 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 } else {
                     lp.text(pos2(indent + 10.0, cy), Align2::LEFT_CENTER, &shown, Tokens::ui(12.0), t.text);
                 }
-                text_anim_popups(app, ui, &lp, layer, *uid, cw.switches, cy, &mut actions);
-                shape_add_popup(app, ui, &lp, layer, *uid, cw.switches, cy, &mut actions);
+                text_anim_popups(app, ui, &lp, layer, *uid, aux_x, cy, &mut actions);
+                shape_add_popup(app, ui, &lp, layer, *uid, aux_x, cy, &mut actions);
                 if *uid == GEOM_BIT | layer.id.0 {
-                    let lr = lp.text(pos2(cw.switches + 6.0, cy), Align2::LEFT_CENTER, crate::i18n::tr("Change Renderer…"), Tokens::ui(11.5), t.accent);
+                    let lr = lp.text(pos2(aux_x + 6.0, cy), Align2::LEFT_CENTER, crate::i18n::tr("Change Renderer…"), Tokens::ui(11.5), t.accent);
                     let resp = ui
                         .interact(lr, egui::Id::new(("tl-change-renderer", layer.id.0)), Sense::click())
                         .on_hover_text(crate::i18n::tr("Composition Settings ▸ 3D Renderer"));
@@ -2648,12 +2652,12 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                         ui_actions.push(UiAct::ChangeRenderer);
                     }
                 }
-                dash_buttons(app, ui, &lp, layer, *uid, cw.switches, cy, &mut actions);
+                dash_buttons(app, ui, &lp, layer, *uid, aux_x, cy, &mut actions);
                 // Mask mode + inverted inline.
                 if let Some(g) = layer.props.find_group(*uid)
                     && let GroupKind::Mask { mode, inverted, .. } = g.kind
                 {
-                    let mr = Rect::from_min_size(pos2(cw.switches + 4.0, cy - 9.0), vec2(80.0, 18.0));
+                    let mr = Rect::from_min_size(pos2(aux_x + 4.0, cy - 9.0), vec2(80.0, 18.0));
                     let pop = egui::Id::new(("maskmode", uid));
                     if widgets::dropdown(ui, mr, mode.label(), &t, egui::Id::new(("mm", uid))).clicked() {
                         widgets::open_popup(ui, pop);
@@ -2668,7 +2672,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                     }
                     lp.text(pos2(ir.max.x + 4.0, cy), Align2::LEFT_CENTER, crate::i18n::tr("Inverted"), Tokens::ui(11.0), t.text_dim);
                 }
-                let gr_rect = Rect::from_min_max(pos2(indent + 8.0, r.min.y), pos2(cw.switches, r.max.y));
+                let gr_rect = Rect::from_min_max(pos2(indent + 8.0, r.min.y), pos2(aux_x, r.max.y));
                 let gr = ui.interact(gr_rect, egui::Id::new(("grow", uid)), Sense::click());
                 app.auto.add(&format!("timeline.group.{uid}.name"), gr_rect, name);
                 if gr.clicked() && uid & (WAVE_BIT | GEOM_BIT) == 0 {
@@ -2726,7 +2730,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 lp.text(pos2(indent + 12.0, cy), Align2::LEFT_CENTER, crate::i18n::tr("Expression:"), Tokens::ui(11.5), t.text_dim);
                 lp.text(pos2(indent + 82.0, cy), Align2::LEFT_CENTER, &prop.name, Tokens::ui(11.5), t.text);
                 // "=" enable switch and the property pick whip (AE's expression controls).
-                let en_r = Rect::from_center_size(pos2(cw.switches + 10.0, cy), vec2(16.0, 16.0));
+                let en_r = Rect::from_center_size(pos2(aux_x + 10.0, cy), vec2(16.0, 16.0));
                 let en = ui.interact(en_r, egui::Id::new(("expr-en", uid)), Sense::click()).on_hover_text(crate::i18n::tr("Enable Expression"));
                 lp.rect_stroke(en_r.shrink(1.0), 2.0, Stroke::new(1.0, t.separator), StrokeKind::Inside);
                 let expr_col = t.expr_text;
@@ -2745,7 +2749,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                     app,
                     ui,
                     &lp,
-                    Rect::from_center_size(pos2(cw.switches + 30.0, cy), vec2(15.0, 15.0)),
+                    Rect::from_center_size(pos2(aux_x + 30.0, cy), vec2(15.0, 15.0)),
                     (WHIP_EXPR, layer.id.0, *uid),
                     &format!("timeline.prop.{uid}.pickWhip"),
                     "Expression pick whip",
@@ -2774,12 +2778,12 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 if let Some(check) = app.session.expr_check
                     && let Err(e) = check(&ex.text)
                 {
-                    let wr = Rect::from_center_size(pos2(cw.switches + 50.0, cy), vec2(14.0, 14.0));
+                    let wr = Rect::from_center_size(pos2(aux_x + 50.0, cy), vec2(14.0, 14.0));
                     lp.text(wr.center(), Align2::CENTER_CENTER, "⚠", Tokens::ui(12.0), Color32::from_rgb(0xf0, 0xa0, 0x30));
                     let _ = ui.interact(wr, egui::Id::new(("expr-err", uid)), Sense::hover()).on_hover_text(e);
                 }
                 // ⓕ: the Expression Language menu inserts at the cursor.
-                let lang_r = Rect::from_center_size(pos2(cw.switches + 70.0, cy), vec2(16.0, 16.0));
+                let lang_r = Rect::from_center_size(pos2(aux_x + 70.0, cy), vec2(16.0, 16.0));
                 let lang = ui.interact(lang_r, egui::Id::new(("expr-lang", uid)), Sense::click()).on_hover_text(crate::i18n::tr("Expression Language Menu"));
                 lp.circle_stroke(lang_r.center(), 6.5, Stroke::new(1.0, if lang.hovered() { t.text } else { t.text_dim }));
                 lp.text(lang_r.center(), Align2::CENTER_CENTER, "f", Tokens::semibold(10.0), if lang.hovered() { t.text } else { t.text_dim });
@@ -2934,7 +2938,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 let base = if is_tr_rot && prop.name == "Rotation" && layer.is_3d() { "Z Rotation".to_string() } else { prop.name.clone() };
                 let pname = if prop.has_expression() { format!("{base}  =") } else { base };
                 lp.text(pos2(name_x, cy), Align2::LEFT_CENTER, &pname, Tokens::ui(12.0), if prop.has_expression() { t.expr_text } else { t.text });
-                let name_rect = Rect::from_min_max(pos2(name_x, r.min.y), pos2(cw.switches - 2.0, r.max.y));
+                let name_rect = Rect::from_min_max(pos2(name_x, r.min.y), pos2(aux_x - 2.0, r.max.y));
                 let name_resp = ui.interact(name_rect, egui::Id::new(("pname", uid)), Sense::click_and_drag());
                 app.auto.add(&format!("timeline.prop.{uid}.name"), name_rect, &prop.name);
                 if name_resp.drag_started() {
@@ -2951,7 +2955,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 crate::widgets::context_menu(&name_resp, |ui| prop_menu(ui, &mut app.auto, cid, layer, prop, &mut actions));
                 // Value editors.
                 let value = ectx.value(layer, prop);
-                let vx = (cw.switches + 4.0).max(name_x + 120.0);
+                let vx = if mobile { aux_x + 2.0 } else { (aux_x + 4.0).max(name_x + 120.0) };
                 let dims = value_editor(app, ui, &lp, layer, prop, &value, pos2(vx, cy), &mut actions);
                 if !dims.is_empty() {
                     dim_hits.push((*uid, dims));

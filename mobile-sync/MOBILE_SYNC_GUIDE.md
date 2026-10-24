@@ -78,3 +78,10 @@ see `mobile_menu::hidden`); heavy PC features are not added. Every new control g
 * Edition 2024: `#[unsafe(no_mangle)]`. JNI calls on the render thread need `with_local_frame`.
 * Android picker: `MainActivity.java` copies picked content to `<files>/imports` and writes `picked.txt`; Rust polls it.
 * The build script compiles Java with `javac` + `d8` into `classes.dex`; the manifest needs `hasCode="true"`.
+* Test with a finger, not a mouse: egui-winit sends Touch, press, release and then `PointerGone`. Code that reads the
+  hover position at release, or state written during a frame and overwritten at its end (`open_page`), only fails
+  there. `tests/ui_mobile_touch.rs` has the helpers; `tests/ui_mobile_audit.rs` is the dead-button detector.
+* The name column is last on the phone: sub-row controls (values, add menus, enable toggles) use `aux_x`, not
+  `cw.switches`. Any new PC row that places controls "to the right of the name" needs the same.
+* The PC panels call host file-dialog hooks (`file_dialog_async`, `pick_save_file`, `pick_files`). A hook the
+  Android host does not set makes its buttons do nothing: after a sync, grep `app.hooks.` for new ones.

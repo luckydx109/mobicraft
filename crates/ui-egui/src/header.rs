@@ -332,7 +332,7 @@ fn tool_options(app: &mut EffectcraftApp, v: serde_json::Value) {
 /// The Colors property of the first Gradient Fill (`gfill`) or Gradient Stroke (`gstroke`) on the
 /// shape `layers`, in contents order through nested groups: (layer, property uid). The toolbar's
 /// gradient swatch edits it in the Gradient Editor.
-fn gradient_colors(app: &EffectcraftApp, layers: &[u64], paint: &str) -> Option<(u64, u64)> {
+pub(crate) fn gradient_colors(app: &EffectcraftApp, layers: &[u64], paint: &str) -> Option<(u64, u64)> {
     fn find(g: &PropGroup, paint: &str, depth: usize) -> Option<u64> {
         if depth >= 16 {
             return None;

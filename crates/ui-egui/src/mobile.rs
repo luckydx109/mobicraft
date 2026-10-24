@@ -80,6 +80,8 @@ enum Section {
     RenderQueue,
     EssentialGraphics,
     Paint,
+    /// Fill & Stroke (the PC header's tool options), not a panel of the PC version.
+    Style,
     Other(PanelKind),
 }
 
@@ -96,17 +98,19 @@ impl Section {
             Section::RenderQueue => PanelKind::RenderQueue,
             Section::EssentialGraphics => PanelKind::EssentialGraphics,
             Section::Paint => PanelKind::Paint,
+            Section::Style => PanelKind::Properties,
             Section::Other(p) => p,
         }
     }
 }
 
-const SECTIONS: [(Section, &str); 24] = [
+const SECTIONS: [(Section, &str); 25] = [
     (Section::Assets, "Assets"),
     (Section::Effects, "Effects & Presets"),
     (Section::Settings, "Effect Settings"),
     (Section::Preview, "Preview"),
     (Section::Properties, "Properties"),
+    (Section::Style, "Fill & Stroke"),
     (Section::Align, "Align"),
     (Section::Audio, "Audio"),
     (Section::RenderQueue, "Render Queue"),
@@ -131,8 +135,9 @@ const SECTIONS: [(Section, &str); 24] = [
 ];
 
 /// Pages that cover the editor.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Default)]
 pub(crate) enum Page {
+    #[default]
     Editor,
     Import,
     Export,
@@ -178,10 +183,13 @@ fn store(ctx: &egui::Context, s: MState) {
 }
 
 /// Open one of the pages that cover the editor.
+///
+/// Queued, not written to the shell state: `show` holds its own copy of that state while it draws
+/// and stores it back at the end, which wiped a page opened from inside the frame (the + next to
+/// the comp tabs did nothing). `show` takes the queued page before it draws the pages.
 pub(crate) fn open_page(ctx: &egui::Context, page: Page) {
-    let mut st = load(ctx);
-    st.page = page;
-    store(ctx, st);
+    ctx.data_mut(|d| d.insert_temp(Id::new("mobile-open-page"), page));
+    ctx.request_repaint();
 }
 
 fn run(app: &mut EffectcraftApp, ctx: &egui::Context, id: &str) {
@@ -312,6 +320,9 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut Ui, full: Rect) {
     // everything below is laid out in what they leave free, so no button sits under them.
     let full = safe_rect(app, &ctx, full);
     poll_picked(app, &ctx);
+    if let Some(poll) = app.hooks.poll_host.as_ref() {
+        poll();
+    }
     let u = dp(&ctx);
     touch_style(app, &ctx, u);
     // The timeline shows the same columns as the PC version (A/V, label, #, switches, Parent &
@@ -397,6 +408,11 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut Ui, full: Rect) {
         if column_sheet(app, &ctx, full, u) {
             st.column_sheet = false;
         }
+    }
+    // (`Page::Editor` is the default, so a missing entry reads as "no page queued".)
+    let queued = ctx.data_mut(|d| d.remove_temp::<Page>(Id::new("mobile-open-page"))).unwrap_or_default();
+    if queued != Page::Editor {
+        st.page = queued;
     }
     pages(app, &ctx, full, &mut st, u);
     store(&ctx, st);
@@ -594,6 +610,22 @@ fn menu_popup(app: &mut EffectcraftApp, ctx: &egui::Context, full: Rect, st: &mu
     } else if dismissed {
         st.menu = None;
     }
+}
+
+/// Run a menu command the way the phone's menus do (the desktop-only ones go to the touch pages),
+/// for the audit tests. Returns the engine's error, if the command failed.
+pub fn run_menu_command(app: &mut EffectcraftApp, ctx: &egui::Context, id: &str, params: serde_json::Value) -> Result<(), String> {
+    let mut st = load(ctx);
+    let handled = intercept(app, ctx, &mut st, id, &params);
+    store(ctx, st);
+    if handled {
+        return Ok(());
+    }
+    effectcraft_menus_invoke(app, ctx, id, params)
+}
+
+fn effectcraft_menus_invoke(app: &mut EffectcraftApp, ctx: &egui::Context, id: &str, params: serde_json::Value) -> Result<(), String> {
+    menus::invoke(app, ctx, id, if params.is_null() { json!({}) } else { params }).map(|_| ())
 }
 
 /// Phone handling of the menu commands that would open desktop-only UI (a native file dialog,
@@ -870,5 +902,9 @@ fn plus_panel(app: &mut EffectcraftApp, ui: &mut Ui, rect: Rect, st: &mut MState
     }
     let body = Rect::from_min_max(pos2(rect.min.x, head.max.y), rect.max);
     app.ui.focused = sec.panel();
+    if sec == Section::Style {
+        crate::mobile_style::show(app, ui, body, u);
+        return;
+    }
     embed(app, ui, sec.panel(), body);
 }

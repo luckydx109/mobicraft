@@ -15,6 +15,7 @@ Cargo.lock
 local.properties
 captures/
 apps/effectcraft-android/app/build/
+apps/effectcraft-android/build/
 apps/effectcraft-android/.gradle/
 
 # IDE / Editor

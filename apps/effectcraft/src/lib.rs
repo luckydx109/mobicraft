@@ -109,6 +109,12 @@ pub fn create_app(cc: &eframe::CreationContext<'_>) -> MobileApp {
     app.hooks.window_insets = Some(Box::new(storage_access::window_insets));
     app.hooks.pick_media = Some(Box::new(storage_access::pick_media));
     app.hooks.take_picked = Some(Box::new(storage_access::take_picked));
+    // The PC panels' file dialogs: Save / Export / Collect Files answer with the app's own storage,
+    // Open goes to the system file manager.
+    app.hooks.file_dialog_async = Some(Box::new(storage_access::file_dialog));
+    app.hooks.pick_save_file = Some(Box::new(storage_access::pick_save_file));
+    app.hooks.pick_save = Some(Box::new(|name: &str| storage_access::pick_save_file(name, "")));
+    app.hooks.poll_host = Some(Box::new(storage_access::poll_dialog));
 
     // The touch shell sizes everything in dp, so egui's native pixels-per-point is kept (1 point =
     // 1 dp); Settings > Appearance > UI Scale still applies.

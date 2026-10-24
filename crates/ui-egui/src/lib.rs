@@ -30,6 +30,7 @@ pub mod mobile_home;
 pub mod mobile_import;
 pub mod mobile_kit;
 pub mod mobile_menu;
+pub mod mobile_style;
 pub mod mobile_viewbar;
 pub mod native_menu;
 pub mod panels;
@@ -191,6 +192,9 @@ pub struct Hooks {
     /// Android: `None` while the user is still picking; then, once, the paths of what was picked
     /// (empty when it was cancelled).
     pub take_picked: Option<Box<dyn Fn() -> Option<Vec<String>>>>,
+    /// Android: called once per frame by the phone shell, so the host can finish work that waits
+    /// on the system (a file dialog the user is answering in another app).
+    pub poll_host: Option<Box<dyn Fn()>>,
 }
 
 impl Hooks {

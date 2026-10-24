@@ -62,3 +62,20 @@ Android NDK 28 / SDK build-tools 35 / platform 36 at the paths at the top of the
   Blur, Frame Blend, Shy, Draft 3D, Flowchart); Paint and Puppet tool groups; Layer, Paint, Brushes, Wiggler,
   Smoother, Motion Sketch, Mask Interpolation, Essential Graphics, Footage, Flowchart, Create Nulls in the + panel.
 * **Updating from now on: see `mobile-sync/MOBILE_SYNC_GUIDE.md`** (send a new PC zip + this project's zip).
+
+## Fixes from the first phone test (buttons that did nothing)
+* The **+ next to the comp tabs** did nothing: `open_page` wrote the page into the shell's state, and `show()` then
+  stored its own older copy over it at the end of the frame. The page is now queued and taken by `show()`.
+* **Property values were missing** from the timeline, and the add-menu / enable-toggle / expression controls of
+  groups, effects and expressions were out of reach: the phone puts the name column last, but those rows put
+  their controls at the Switches column. They now sit in the right part of the (wider) name column (`aux_x`).
+* **Fill & Stroke** (the PC header's tool options) was not on the phone at all: new `mobile_style.rs`, a section of
+  the + panel: Fill / Stroke None - Solid - Linear - Radial, swatch with hex and R G B, opacity, blend mode,
+  Stroke Width, Tool Creates Shape / Mask, Snapping. Same engine commands as the PC.
+* The PC panels' **file dialogs** (Essential Graphics, Export, Collect Files, Open Project ...) had no host hook on
+  Android and silently did nothing: Save and Folder now answer with the app's own storage (`Saved/`), Open goes
+  to the system file manager (`MainActivity.java`, kind "any").
+* Camera view: it works (tested with a 3D layer) but is dimmed until the comp has a 3D layer, as on the PC.
+* Tests now tap the way a finger does (`ui_mobile_touch.rs`); `ui_mobile_audit.rs` (run by hand with `--ignored`)
+  taps every button in many states and lists the ones that change nothing. Its list still holds legitimate
+  no-ops (already-selected tool, 100% opacity at +, Redo with nothing to redo, ...): read it, do not trust it blindly.
